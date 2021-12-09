@@ -1,52 +1,129 @@
-#!/bin/bash
-#git config --global https.proxy 'https://:@:443'
-api="http://hq.sinajs.cn/list="
-dir=`dirname "$0"`
-if [ "$dir" = "." ]; then
-	dir=$PWD
-fi
+#!/bin/sh 
 
-stocks="sh600050 sz002115 sh600887 sh600967"
-# 1: 股票名字
-# 2: 今日开盘价
-# 3: 昨日收盘价
-# 4: 当前价格
-# 5: 今日最高价
-# 6: 今日最低价
-#echo -e "\t\t当前\t涨跌额\t涨跌幅(%)\t开盘价\t昨收\t最高\t最低\n"
-#while :
-#do
-#	row=`tput lines`
-#	for i in `cat $dir/Stocks.dat`
-#	do
-#		curl -s $api$i |iconv -f gbk -t utf8 |cut -d '"' -f 2 | awk -F ',' '{ if ( $4 < $3 ) c="\033[32m";else c="\033[31m"; print \
-#		substr($1, 0,5)"\t"\
-#		"\033[33m"$4"\033[0m \t"\
-#		c substr(($4-$3), 0, 5) "\033[0m" "\t    "\
-#		c substr(($4-$3)/$3*100, 0, 5) "\033[0m" "\t    "\
-#		$2"\t"\
-#		$3"\t"\
-#		$5"\t"\
-#		$6"\t"}'
-#		echo -e $p
-#		let "row-=2"
-#	done
-#	let "row-=1"
-#	sleep 5
-#	echo -e "\\033[s\c"
-#	echo -e "\\033[${row};1H\033[K"
-#	echo -e "\\033[u\c"
-#done
+# Author: vicklin123@gmail.com
+# Date: 2015-07-20 14:07:54
+# Version: 0.0.1
+#This application helps you to get information of stocks in terminal.
+#Usage:
+# 1. put stock code in the file called "codes", eg. sh000001
+# 2. execute the script "start.sh"(remember to use chmod +x to authorize)
+# 3. if you just want to display short info like cur and % for scret, just execute "start.sh AnyWord"
 
-row=`tput lines`
-#for i in `cat $dir/Stocks.dat`
-for i in $stocks
-do
-	curl -s $api$i |iconv -f gbk -t utf8 |cut -d '"' -f 2 | awk -F ',' '{printf $4 "\t"}'  
-done
-echo "" |awk -F ',' '{print $0}'
-#let "row-=1"
-#sleep 5
-#echo -e "\\033[s\c"
-#echo -e "\\033[${row};1H\033[K"
-#echo -e "\\033[u\c"
+sinaurl="http://hq.sinajs.cn/list=" 
+context=$(dirname $0)
+short_scret=$1
+codes=$context"/codes"
+refreshGap=3s
+
+
+# curl one stock from sina, save cache in $result
+getStock()
+{
+ target=${sinaurl}""$1
+ result=$result$'\n'`curl ${target} 2>/dev/null | iconv -f gb2312 -t utf-8 | sed "s/var //" | sed "s/ /_/g"`
+}
+
+# for each code in $codes, -> getStock
+readStock()
+{
+ if [ -z $short_scret ]; then
+  result=`echo 'title="---name----,open,old,cur,top,bottom,\%"'`
+ else
+  result=
+ fi
+ while read myline
+ do
+  getStock $myline
+ done < $codes
+}
+
+# show stock info on terminal
+printStock()
+{
+ clear
+ if [ -z $short_scret ]; then
+  for r in $result
+  do
+   echo $r | awk '{
+	len=split(substr($r,index($r,"=")+2,100),arr,",");
+		name=substr(arr[1],0,16)
+		open=substr(arr[2],0,7)
+	if(open=="0.00"){ #check if is suspended
+		open="---"
+		old="---"
+		cur="---"
+		top="---"
+		bottom="---"
+		gap="---"
+	} else {
+		old=substr(arr[3],0,7)
+		cur=substr(arr[4],0,7)
+		top=substr(arr[5],0,7)
+		bottom=substr(arr[6],0,7)
+		if(old=="old"){
+			gap="%"
+		} else {
+			gap=substr((cur-old)/old*100,0,7)
+		}
+	}
+	printf("%s\t",name)
+	printf("\033[36m%s\033[0m\t",open)
+	printf("%s\t",old)
+	if (gap>0) {
+		printf("\033[31m%s\033[0m\t",cur)
+	} else {
+		printf("\033[32m%s\033[0m\t",cur)
+	}
+	printf("\033[33m%s\033[0m\t",top)
+	printf("%s\t",bottom)
+	if (gap>=0) {
+		printf("\033[31m%s\033[0m\t",gap)
+	} else if(gap!="-nan"){
+		printf("\033[32m%s\033[0m\t",gap)
+	}
+	print"\n"
+   }'
+  done
+ else
+  for r in $result
+  do
+   echo $r | awk '{
+	len=split(substr($r,index($r,"=")+2,100),arr,",");
+		open=substr(arr[2],0,7)
+	if(open=="0.00"){ #check if is suspended
+		cur="---"
+		gap="---"
+	} else {
+		old=substr(arr[3],0,7)
+		cur=substr(arr[4],0,7)
+		gap=substr((cur-old)/old*100,0,7)
+	}
+	if (gap>0) {
+		printf("\033[31m%s\033[0m\t",cur)
+	} else {
+		printf("\033[32m%s\033[0m\t",cur)
+	}
+	if (gap>=0) {
+		printf("\033[31m%s\033[0m\t",gap)
+	} else if(gap!="-nan"){
+		printf("\033[32m%s\033[0m\t",gap)
+	}
+	print"\n"
+   }'
+  done
+ fi
+}
+
+# main entrance, execute every 5s
+main()
+{
+  while (true)
+  do
+   readStock
+   printStock
+   sleep $refreshGap
+  done
+}
+
+# main entrance
+main
